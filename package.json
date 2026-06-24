@@ -1,0 +1,8 @@
+{
+  "name": "wf-test",
+  "version": "1.0.0",
+  "description": "Wordfeud API test app",
+  "engines": {
+    "node": ">=10"
+  }
+}
