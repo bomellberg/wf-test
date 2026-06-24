@@ -268,7 +268,7 @@ function printGames(games, myId) {
       '  ' + status + ' vs ' + oppName +
       '  score ' + myScore + '-' + oppScore + '\n' +
       '    my tiles : ' + myStr + '\n' +
-      '    bag+opp  : ' + remStr + '  (bag:' + g.bag_count + ')'
+      '    bag+opp  : ' + remStr + '  (bag:' + g.bag_count + ')\n'
     );
   }
 }
