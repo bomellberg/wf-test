@@ -150,6 +150,61 @@ function wfGet(path) {
 }
 
 // ---------------------------------------------------------------------------
+// Tile sets — { LETTER: count } per ruleset id.
+// '?' = blank tile.
+// ---------------------------------------------------------------------------
+var TILE_SETS = {
+  0: {A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1,'?':2}, // English US
+  1: {A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1,'?':2}, // English UK
+  2: {A:8,B:2,C:1,D:5,E:7,F:2,G:3,H:2,I:5,J:1,K:3,L:5,M:3,N:6,O:5,P:2,R:8,S:8,T:8,U:3,V:2,X:1,Y:2,'\u00C5':2,'\u00C4':2,'\u00D6':2,'?':2}, // Swedish
+  3: {A:7,B:3,D:5,E:9,F:4,G:4,H:3,I:5,J:2,K:4,L:5,M:3,N:6,O:4,P:2,R:6,S:6,T:6,U:3,V:4,Y:1,'\u00C6':2,'\u00D8':2,'\u00C5':2,'?':2}, // Norwegian
+  4: {A:7,B:4,C:2,D:5,E:9,F:3,G:3,H:2,I:4,J:2,K:4,L:4,M:3,N:7,O:4,P:2,R:7,S:6,T:6,U:3,V:3,X:1,Y:1,'\u00C6':2,'\u00D8':2,'\u00C5':4,'?':3}, // Danish
+  5: {A:6,B:2,C:3,D:5,E:18,F:2,G:3,H:2,I:4,J:1,K:3,L:5,M:3,N:10,O:6,P:2,Q:1,R:6,S:5,T:5,U:6,V:2,W:2,X:1,Y:1,Z:2,'?':2}, // Dutch
+};
+
+function getTileSet(ruleset) {
+  return TILE_SETS[ruleset] || TILE_SETS[0];
+}
+
+// Compute letters not yet placed on the board (still in bag + both racks).
+// tiles  — array from game.tiles, each entry [x, y, letter, is_wildcard]
+//          OR {x, y, character, is_wildcard} — we handle both.
+// rack   — my rack: array of letter strings or tile objects (may be absent)
+function computeRemaining(tileSet, tiles, rack) {
+  var remaining = {};
+  Object.keys(tileSet).forEach(function(l) { remaining[l] = tileSet[l]; });
+
+  function subtract(letter, wildcard) {
+    var key = wildcard ? '?' : letter.toUpperCase();
+    if (remaining[key] !== undefined) remaining[key] = Math.max(0, remaining[key] - 1);
+  }
+
+  // Board tiles
+  for (var i = 0; i < tiles.length; i++) {
+    var t = tiles[i];
+    if (Array.isArray(t)) subtract(t[2], t[3]);          // [x, y, letter, is_wildcard]
+    else subtract(t.character || t.letter || '', t.is_wildcard);
+  }
+
+  // My rack (already known to us — subtract so we see only bag + opponent rack)
+  for (var j = 0; j < (rack || []).length; j++) {
+    var r = rack[j];
+    if (typeof r === 'string') subtract(r, r === '?');
+    else subtract(r.character || r.letter || '', r.is_wildcard);
+  }
+
+  return remaining;
+}
+
+function formatRemaining(remaining) {
+  var out = [];
+  Object.keys(remaining).sort().forEach(function(l) {
+    for (var i = 0; i < remaining[l]; i++) out.push(l);
+  });
+  return out.join('');
+}
+
+// ---------------------------------------------------------------------------
 
 function login(email, password) {
   console.log('Logging in as ' + email + ' ...');
@@ -181,10 +236,23 @@ function printGames(games, myId) {
     var oppScore = opp ? opp.score : 0;
     var oppName = opp ? opp.username : '?';
     var status = g.is_running ? (myTurn ? 'YOUR TURN  ' : 'waiting    ') : 'finished   ';
+
+    // Remaining letters (bag + opponent rack)
+    var remainStr = '';
+    var tiles = g.tiles || [];
+    var myRack = me ? (me.rack || me.tiles || []) : [];
+    if (tiles.length > 0 || g.bag_count === 0) {
+      var tileSet = getTileSet(g.ruleset);
+      var rem = computeRemaining(tileSet, tiles, myRack);
+      remainStr = '  remaining: ' + formatRemaining(rem);
+    } else {
+      remainStr = '  (no tile data)';
+    }
+
     console.log(
       '  [' + g.id + ']  ' + status + '  vs ' + oppName +
-      '  score ' + myScore + '-' + oppScore +
-      '  board: ' + g.board
+      '  score ' + myScore + '-' + oppScore + '\n' +
+      '           ruleset:' + g.ruleset + '  bag:' + g.bag_count + remainStr
     );
   }
 }
@@ -206,21 +274,20 @@ function main() {
       }
       var me = loginRes.content;
       console.log('Logged in:  ' + me.username + '  (id ' + me.id + ')');
-      console.log('Cookies:    ' + buildCookieHeader() + '\n');
 
-      console.log('Fetching current games ...');
+      console.log('Fetching current games ...\n');
       return getCurrentGames().then(function(gamesRes) {
         if (gamesRes.status !== 'success') {
           console.error('Failed to fetch games:', JSON.stringify(gamesRes, null, 2));
           process.exit(1);
         }
         var games = (gamesRes.content && gamesRes.content.games) ? gamesRes.content.games : [];
-        console.log('Active games: ' + games.length + '\n');
+        console.log('Games: ' + games.length + '\n');
         printGames(games, me.id);
 
         if (process.env.WF_DEBUG) {
-          console.log('\n--- raw games response ---');
-          console.log(JSON.stringify(gamesRes, null, 2));
+          console.log('\n--- first game raw ---');
+          console.log(JSON.stringify(games[0], null, 2));
         }
       });
     })
@@ -231,3 +298,4 @@ function main() {
 }
 
 main();
+
