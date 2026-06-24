@@ -203,21 +203,21 @@ function main() {
 
   login(email, password)
     .then(function(loginRes) {
-      if (loginRes.status !== 'OK') {
+      if (loginRes.status !== 'success') {
         console.error('Login failed:', JSON.stringify(loginRes, null, 2));
         process.exit(1);
       }
-      var me = loginRes.result;
+      var me = loginRes.content;
       console.log('Logged in:  ' + me.username + '  (id ' + me.id + ')');
       console.log('Cookies:    ' + buildCookieHeader() + '\n');
 
       console.log('Fetching current games ...');
       return getCurrentGames().then(function(gamesRes) {
-        if (gamesRes.status !== 'OK') {
+        if (gamesRes.status !== 'success') {
           console.error('Failed to fetch games:', JSON.stringify(gamesRes, null, 2));
           process.exit(1);
         }
-        var games = (gamesRes.result && gamesRes.result.games) ? gamesRes.result.games : [];
+        var games = (gamesRes.content && gamesRes.content.games) ? gamesRes.content.games : [];
         console.log('Active games: ' + games.length + '\n');
         printGames(games, me.id);
 
