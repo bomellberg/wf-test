@@ -157,34 +157,8 @@ function login(email, password) {
   return wfPost('/wf/user/login/email/', { email: email, password: passwordHash });
 }
 
-var GAMES_CANDIDATES = [
-  { method: 'GET',  path: '/wf/user/games/' },
-  { method: 'POST', path: '/wf/user/games/' },
-  { method: 'GET',  path: '/wf/user/get_games/' },
-  { method: 'POST', path: '/wf/user/get_games/' },
-  { method: 'GET',  path: '/wf/user/' },
-  { method: 'POST', path: '/wf/user/get_current_games/' },
-];
-
 function getCurrentGames() {
-  // Try each candidate in sequence; stop at the first that returns a non-404
-  function tryNext(i) {
-    if (i >= GAMES_CANDIDATES.length) {
-      return Promise.reject(new Error('No working games endpoint found'));
-    }
-    var c = GAMES_CANDIDATES[i];
-    var req = c.method === 'GET' ? wfGet(c.path) : wfPost(c.path);
-    return req.then(function(res) {
-      console.log('Games endpoint: ' + c.method + ' ' + c.path);
-      return res;
-    }).catch(function(err) {
-      if (/404/.test(err.message)) return tryNext(i + 1);
-      // Non-404 error (403, 500 etc.) — also skip but log it
-      console.log('Skip ' + c.method + ' ' + c.path + ': ' + err.message.slice(0, 60));
-      return tryNext(i + 1);
-    });
-  }
-  return tryNext(0);
+  return wfGet('/wf/user/games/');
 }
 
 // ---------------------------------------------------------------------------
