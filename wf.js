@@ -204,6 +204,21 @@ function formatRemaining(remaining) {
   return out.join('');
 }
 
+// Extract rack letters from a player object — tries known field names.
+// Returns sorted array of uppercase letter strings (blank = '?').
+function extractRack(player) {
+  if (!player) return [];
+  var raw = player.rack || player.tiles || player.hand || [];
+  var out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var r = raw[i];
+    if (typeof r === 'string') out.push(r === '' ? '?' : r.toUpperCase());
+    else if (Array.isArray(r)) out.push(r[0] ? r[0].toUpperCase() : '?');
+    else out.push(r.is_wildcard ? '?' : (r.character || r.letter || '?').toUpperCase());
+  }
+  return out.sort();
+}
+
 // ---------------------------------------------------------------------------
 
 function login(email, password) {
@@ -237,18 +252,21 @@ function printGames(games, myId) {
     var oppName = opp ? opp.username : '?';
     var status = g.is_running ? (myTurn ? 'YOUR TURN  ' : 'waiting    ') : 'finished   ';
 
-    // Remaining letters (bag + opponent rack)
-    var remainStr = '';
-    var tiles = g.tiles || [];
-    var myRack = me ? (me.rack || me.tiles || []) : [];
-    var tileSet = getTileSet(g.ruleset);
-    var rem = computeRemaining(tileSet, tiles, myRack);
-    remainStr = '  remaining: ' + formatRemaining(rem);
+    var boardTiles = g.tiles || [];
+    var myRack    = extractRack(me);
+    var tileSet   = getTileSet(g.ruleset);
+
+    // remaining = bag + opponent rack (board tiles and my rack subtracted)
+    var rem = computeRemaining(tileSet, boardTiles, myRack);
+
+    var myStr  = myRack.length ? myRack.join('') : '(unknown)';
+    var remStr = formatRemaining(rem);
 
     console.log(
       '  [' + g.id + ']  ' + status + '  vs ' + oppName +
       '  score ' + myScore + '-' + oppScore + '\n' +
-      '           ruleset:' + g.ruleset + '  bag:' + g.bag_count + remainStr
+      '           my tiles : ' + myStr + '\n' +
+      '           bag+opp  : ' + remStr + '  (bag:' + g.bag_count + ')'
     );
   }
 }
