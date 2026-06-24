@@ -259,14 +259,16 @@ function printGames(games, myId) {
     // remaining = bag + opponent rack (board tiles and my rack subtracted)
     var rem = computeRemaining(tileSet, boardTiles, myRack);
 
-    var myStr  = myRack.length ? myRack.join('') : '(unknown)';
-    var remStr = formatRemaining(rem);
+    var myStr  = myRack.length
+      ? myRack.join('').replace(/\?/g, '\u25A1')   // ? → □
+      : (g.is_running ? '(unknown)' : '');          // empty for finished games
+    var remStr = formatRemaining(rem).replace(/\?/g, '\u25A1');
 
     console.log(
-      '  [' + g.id + ']  ' + status + '  vs ' + oppName +
+      '  ' + status + ' vs ' + oppName +
       '  score ' + myScore + '-' + oppScore + '\n' +
-      '           my tiles : ' + myStr + '\n' +
-      '           bag+opp  : ' + remStr + '  (bag:' + g.bag_count + ')'
+      '    my tiles : ' + myStr + '\n' +
+      '    bag+opp  : ' + remStr + '  (bag:' + g.bag_count + ')'
     );
   }
 }
