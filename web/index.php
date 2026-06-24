@@ -1,0 +1,283 @@
+<?php
+// ============================================================
+//  Wordfeud game viewer  —  upload to ~/wordfeud/index.php
+// ============================================================
+session_start();
+
+define('WF_HOST',  'api.wordfeud.com');
+define('WF_AGENT', 'WebFeudClient/3.0.0 (Android 7)');
+
+// Swedish tile set (104 tiles, ruleset 4)
+$TILESET = [
+    'A'=>9,'B'=>2,'C'=>1,'D'=>5,'E'=>8,'F'=>2,'G'=>3,'H'=>2,'I'=>5,'J'=>1,
+    'K'=>3,'L'=>5,'M'=>3,'N'=>6,'O'=>6,'P'=>2,'R'=>8,'S'=>8,'T'=>9,'U'=>3,
+    'V'=>2,'X'=>1,'Y'=>1,'Z'=>1,'Å'=>2,'Ä'=>2,'Ö'=>2,'?'=>2,
+];
+$LETTER_ORDER = ['?','A','B','C','D','E','F','G','H','I','J','K','L','M',
+                 'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','Å','Ä','Ö'];
+
+// ── API helpers ──────────────────────────────────────────────
+function wf_request(string $method, string $path, ?array $data = null): ?array {
+    $ch = curl_init('https://' . WF_HOST . $path);
+    $hdrs = [
+        'Content-Type: application/json',
+        'Accept: application/json',
+        'User-Agent: ' . WF_AGENT,
+    ];
+    if (!empty($_SESSION['wf_sid'])) {
+        $hdrs[] = 'Cookie: sessionid=' . $_SESSION['wf_sid'];
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => true,
+        CURLOPT_HTTPHEADER     => $hdrs,
+        CURLOPT_TIMEOUT        => 15,
+    ]);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST,       true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data ?? new stdClass()));
+    }
+    $raw = curl_exec($ch);
+    $hsz = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    curl_close($ch);
+    if ($raw === false) return null;
+
+    $header = substr($raw, 0, $hsz);
+    $body   = substr($raw, $hsz);
+    if (preg_match('/Set-Cookie:\s*sessionid=([^;\s]+)/i', $header, $m)) {
+        $_SESSION['wf_sid'] = $m[1];
+    }
+    return json_decode($body, true);
+}
+function wf_post(string $p, array $d): ?array { return wf_request('POST', $p, $d); }
+function wf_get(string $p): ?array            { return wf_request('GET',  $p); }
+
+// ── Tile helpers ─────────────────────────────────────────────
+function extract_rack(?array $player): array {
+    if (!$player) return [];
+    $raw = $player['rack'] ?? $player['tiles'] ?? $player['hand'] ?? [];
+    $out = [];
+    foreach ($raw as $r) {
+        if (is_string($r))                            $out[] = $r === '' ? '?' : mb_strtoupper($r);
+        elseif (!empty($r['is_wildcard']))             $out[] = '?';
+        else                                          $out[] = mb_strtoupper($r['character'] ?? $r['letter'] ?? '?');
+    }
+    sort($out);
+    return $out;
+}
+
+function compute_remaining(array $tileSet, array $boardTiles, array $myRack): array {
+    $rem = $tileSet;
+    foreach ($boardTiles as $t) {
+        $key = is_array($t) && isset($t[3])
+            ? ($t[3] ? '?' : mb_strtoupper($t[2]))
+            : (!empty($t['is_wildcard']) ? '?' : mb_strtoupper($t['character'] ?? $t['letter'] ?? ''));
+        if (isset($rem[$key])) $rem[$key] = max(0, $rem[$key] - 1);
+    }
+    foreach ($myRack as $l) {
+        $key = $l === '?' ? '?' : mb_strtoupper($l);
+        if (isset($rem[$key])) $rem[$key] = max(0, $rem[$key] - 1);
+    }
+    return $rem;
+}
+
+function sorted_letters(array $rem, array $order): array {
+    $out = [];
+    foreach ($order as $l) {
+        if (!isset($rem[$l])) continue;
+        for ($i = 0; $i < $rem[$l]; $i++) $out[] = $l;
+    }
+    return $out;
+}
+
+function tile_html(string $l, bool $small = false): string {
+    $cls = 'tile' . ($small ? ' sm' : '') . ($l === '?' ? ' blank' : '');
+    $ch  = $l === '?' ? '□' : htmlspecialchars($l);
+    return "<div class=\"$cls\">$ch</div>";
+}
+
+// ── Routing ──────────────────────────────────────────────────
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
+    $hash = sha1($_POST['password'] . 'JarJarBinks9');
+    $res  = wf_post('/wf/user/login/email/', [
+        'email'    => trim($_POST['email']),
+        'password' => $hash,
+    ]);
+    if (($res['status'] ?? '') === 'success') {
+        $_SESSION['wf_user'] = $res['content'];
+        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+        exit;
+    }
+    $error = 'Login failed — check email / password';
+}
+
+$loggedIn = !empty($_SESSION['wf_sid']) && !empty($_SESSION['wf_user']);
+$games    = [];
+if ($loggedIn) {
+    $gr     = wf_get('/wf/user/games/');
+    $games  = ($gr['status'] ?? '') === 'success' ? ($gr['content']['games'] ?? []) : [];
+}
+$myId = (int)($_SESSION['wf_user']['id'] ?? 0);
+
+// Sort: your turn → waiting → finished
+function game_order(array $g, int $id): int {
+    if (!$g['is_running']) return 2;
+    foreach ($g['players'] as $p)
+        if ($p['id'] == $id) return $g['current_player'] === $p['position'] ? 0 : 1;
+    return 1;
+}
+usort($games, fn($a, $b) => game_order($a, $myId) - game_order($b, $myId));
+?>
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Wordfeud</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     background:#121212;color:#e0e0e0;min-height:100vh}
+
+/* ── Header ── */
+header{background:#1e1e2e;padding:13px 18px;display:flex;justify-content:space-between;
+       align-items:center;position:sticky;top:0;z-index:10;
+       box-shadow:0 2px 10px #0009}
+header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
+.hdr-right{display:flex;gap:8px;align-items:center}
+.user{font-size:13px;color:#7f849c}
+.btn{background:none;border:1px solid #45475a;color:#cdd6f4;padding:6px 14px;
+     border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block}
+.btn:hover{border-color:#89b4fa;color:#89b4fa}
+
+/* ── Cards ── */
+.games{padding:16px;display:flex;flex-direction:column;gap:12px;
+       max-width:600px;margin:0 auto}
+.card{background:#1e1e2e;border-radius:14px;padding:16px;
+      border-left:4px solid #45475a}
+.card.your-turn{border-left-color:#a6e3a1}
+.card.finished{opacity:.4}
+
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.opp{font-size:18px;font-weight:700}
+.score{font-size:14px;color:#a6adc8;margin-top:3px}
+.badge{font-size:11px;font-weight:800;padding:4px 11px;border-radius:20px;
+       text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;margin-top:2px}
+.badge.your-turn{background:#a6e3a1;color:#1e1e2e}
+.badge.waiting{background:#313244;color:#7f849c}
+.badge.finished{background:#181825;color:#585b70}
+
+/* ── Tiles ── */
+.section{margin-top:10px}
+.lbl{font-size:10px;color:#7f849c;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.tiles{display:flex;flex-wrap:wrap;gap:4px;min-height:20px}
+
+.tile{width:34px;height:34px;background:#f9e2af;color:#1e1e2e;font-weight:800;
+      font-size:16px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 0 #9a7219,0 3px 5px #0006}
+.tile.blank{background:#9399b2;color:#1e1e2e;box-shadow:0 2px 0 #585b70,0 3px 5px #0006}
+.tile.sm{width:24px;height:24px;font-size:12px;font-weight:700;border-radius:4px;
+         box-shadow:0 1px 0 #9a7219,0 2px 4px #0005}
+.tile.sm.blank{box-shadow:0 1px 0 #585b70,0 2px 4px #0005}
+
+.bag-info{font-size:11px;color:#45475a;margin-top:8px}
+
+/* ── Login ── */
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:#1e1e2e;border-radius:18px;padding:36px 28px;width:100%;max-width:340px}
+.login-box h2{margin-bottom:26px;color:#89b4fa;text-align:center;font-size:24px}
+.login-box input{width:100%;padding:14px 16px;margin-bottom:14px;background:#313244;
+                 border:1px solid #45475a;border-radius:10px;color:#cdd6f4;font-size:16px}
+.login-box input:focus{outline:none;border-color:#89b4fa}
+.login-box button{width:100%;padding:14px;background:#89b4fa;color:#1e1e2e;
+                  border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:4px}
+.login-box button:hover{background:#b4d0ff}
+.err{color:#f38ba8;font-size:13px;margin-bottom:14px;text-align:center}
+</style>
+</head>
+<body>
+
+<?php if (!$loggedIn): ?>
+<div class="login">
+  <div class="login-box">
+    <h2>Wordfeud</h2>
+    <?php if ($error): ?><p class="err"><?= htmlspecialchars($error) ?></p><?php endif ?>
+    <form method="post" autocomplete="on">
+      <input type="email"    name="email"    placeholder="Email"    required autocomplete="email">
+      <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</div>
+
+<?php else: ?>
+<header>
+  <h1>Wordfeud</h1>
+  <div class="hdr-right">
+    <span class="user"><?= htmlspecialchars($_SESSION['wf_user']['username'] ?? '') ?></span>
+    <button class="btn" onclick="location.reload()">↻</button>
+    <a class="btn" href="?logout=1">Logout</a>
+  </div>
+</header>
+
+<div class="games">
+<?php foreach ($games as $g):
+    $me = null; $opp = null;
+    foreach ($g['players'] as $p) {
+        if ($p['id'] == $myId) $me = $p; else $opp = $p;
+    }
+    $myScore  = $me['score']       ?? 0;
+    $oppScore = $opp['score']      ?? 0;
+    $oppName  = $opp['username']   ?? '?';
+    $myTurn   = $g['is_running'] && $g['current_player'] === ($me['position'] ?? -1);
+    $finished = !$g['is_running'];
+
+    $cardCls  = $finished ? 'finished' : ($myTurn ? 'your-turn' : '');
+    $badgeCls = $finished ? 'finished' : ($myTurn ? 'your-turn' : 'waiting');
+    $badgeTxt = $finished ? 'Finished'  : ($myTurn ? 'Your turn'  : 'Waiting');
+
+    $myRack  = extract_rack($me);
+    $rem     = compute_remaining($TILESET, $g['tiles'] ?? [], $myRack);
+    $remList = sorted_letters($rem, $LETTER_ORDER);
+    $bagCnt  = (int)($g['bag_count'] ?? 0);
+?>
+<div class="card <?= $cardCls ?>">
+  <div class="card-top">
+    <div>
+      <div class="opp"><?= htmlspecialchars($oppName) ?></div>
+      <div class="score"><?= $myScore ?> – <?= $oppScore ?></div>
+    </div>
+    <span class="badge <?= $badgeCls ?>"><?= $badgeTxt ?></span>
+  </div>
+
+  <?php if ($myRack || $g['is_running']): ?>
+  <div class="section">
+    <div class="lbl">My tiles</div>
+    <div class="tiles">
+      <?php foreach ($myRack as $l) echo tile_html($l) ?>
+    </div>
+  </div>
+  <?php endif ?>
+
+  <div class="section">
+    <div class="lbl">Bag + opponent</div>
+    <div class="tiles">
+      <?php foreach ($remList as $l) echo tile_html($l, true) ?>
+    </div>
+    <div class="bag-info"><?= count($remList) ?> tiles &middot; bag: <?= $bagCnt ?></div>
+  </div>
+</div>
+<?php endforeach ?>
+</div>
+
+<script>setTimeout(()=>location.reload(), 3*60*1000)</script>
+<?php endif ?>
+</body>
+</html>
