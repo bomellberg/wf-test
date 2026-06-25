@@ -199,10 +199,10 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 .tile{width:34px;height:34px;background:#f9e2af;color:#1e1e2e;font-weight:800;
       font-size:16px;border-radius:5px;display:flex;align-items:center;justify-content:center;
       box-shadow:0 2px 0 #9a7219,0 3px 5px #0006}
-.tile.blank{background:#9399b2;color:#1e1e2e;box-shadow:0 2px 0 #585b70,0 3px 5px #0006}
+.tile.blank{background:#f9e2af;color:#1e1e2e;box-shadow:0 2px 0 #9a7219,0 3px 5px #0006}
 .tile.sm{width:24px;height:24px;font-size:12px;font-weight:700;border-radius:4px;
          box-shadow:0 1px 0 #9a7219,0 2px 4px #0005}
-.tile.sm.blank{box-shadow:0 1px 0 #585b70,0 2px 4px #0005}
+.tile.sm.blank{box-shadow:0 1px 0 #9a7219,0 2px 4px #0005}
 
 .bag-info{font-size:11px;color:#45475a;margin-top:8px}
 
