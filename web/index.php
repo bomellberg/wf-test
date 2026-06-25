@@ -105,17 +105,24 @@ if (isset($_GET['logout'])) {
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
-    $hash = sha1($_POST['password'] . 'JarJarBinks9');
-    $res  = wf_post('/wf/user/login/email/', [
-        'email'    => trim($_POST['email']),
-        'password' => $hash,
-    ]);
-    if (($res['status'] ?? '') === 'success') {
-        $_SESSION['wf_user'] = $res['content'];
-        header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
-        exit;
+    if (!function_exists('curl_init')) {
+        $error = 'PHP cURL extension is not installed. Run: apt install php8.3-curl';
+    } else {
+        $hash = sha1($_POST['password'] . 'JarJarBinks9');
+        $res  = wf_post('/wf/user/login/email/', [
+            'email'    => trim($_POST['email']),
+            'password' => $hash,
+        ]);
+        if ($res === null) {
+            $error = 'Could not reach api.wordfeud.com — cURL failed. Check: apt install php8.3-curl';
+        } elseif (($res['status'] ?? '') === 'success') {
+            $_SESSION['wf_user'] = $res['content'];
+            header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+            exit;
+        } else {
+            $error = 'Login failed: ' . htmlspecialchars(json_encode($res));
+        }
     }
-    $error = 'Login failed — check email / password';
 }
 
 $loggedIn = !empty($_SESSION['wf_sid']) && !empty($_SESSION['wf_user']);
