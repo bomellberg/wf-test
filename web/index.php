@@ -17,6 +17,11 @@ $TILESET = [
 ];
 $LETTER_ORDER = ['?','A','B','C','D','E','F','G','H','I','J','K','L','M',
                  'N','O','P','Q','R','S','T','U','V','W','X','Y','Z','Å','Ä','Ö'];
+$TILE_VALUES = [
+    'A'=>1,'B'=>4,'C'=>8,'D'=>2,'E'=>1,'F'=>4,'G'=>3,'H'=>3,'I'=>1,'J'=>8,
+    'K'=>3,'L'=>2,'M'=>3,'N'=>1,'O'=>2,'P'=>4,'R'=>1,'S'=>1,'T'=>1,'U'=>4,
+    'V'=>4,'X'=>8,'Y'=>7,'Z'=>8,'Å'=>4,'Ä'=>4,'Ö'=>8,'?'=>0,
+];
 
 // ── API helpers ──────────────────────────────────────────────
 function wf_request(string $method, string $path, ?array $data = null): ?array {
@@ -94,9 +99,11 @@ function sorted_letters(array $rem, array $order): array {
 }
 
 function tile_html(string $l, bool $small = false): string {
+    global $TILE_VALUES;
     $cls = 'tile' . ($small ? ' sm' : '') . ($l === '?' ? ' blank' : '');
     $ch  = $l === '?' ? '' : htmlspecialchars($l);
-    return "<div class=\"$cls\">$ch</div>";
+    $val = $TILE_VALUES[$l] ?? 0;
+    return "<div class=\"$cls\">$ch<span class=\"val\">$val</span></div>";
 }
 
 // ── Routing ──────────────────────────────────────────────────
@@ -196,13 +203,14 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 .lbl{font-size:10px;color:#7f849c;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
 .tiles{display:flex;flex-wrap:wrap;gap:4px;min-height:20px}
 
-.tile{width:34px;height:34px;background:#f9e2af;color:#1e1e2e;font-weight:800;
-      font-size:16px;border-radius:5px;display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 0 #9a7219,0 3px 5px #0006}
-.tile.blank{background:#f9e2af;color:#1e1e2e;box-shadow:0 2px 0 #9a7219,0 3px 5px #0006}
-.tile.sm{width:24px;height:24px;font-size:12px;font-weight:700;border-radius:4px;
-         box-shadow:0 1px 0 #9a7219,0 2px 4px #0005}
-.tile.sm.blank{box-shadow:0 1px 0 #9a7219,0 2px 4px #0005}
+.tile{width:44px;height:44px;background:#fff;color:#1e1e2e;font-weight:800;
+      font-size:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 0 #aaa,0 3px 5px #0003;position:relative}
+.tile.blank{background:#fff;color:#1e1e2e;box-shadow:0 2px 0 #aaa,0 3px 5px #0003}
+.tile.sm{width:34px;height:34px;font-size:16px;font-weight:700;border-radius:4px;
+         box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
+.tile.sm.blank{box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
+.tile .val{position:absolute;bottom:2px;right:3px;font-size:8px;font-weight:600;line-height:1;color:#777}
 
 .bag-info{font-size:11px;color:#45475a;margin-top:8px}
 
