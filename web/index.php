@@ -95,7 +95,7 @@ function sorted_letters(array $rem, array $order): array {
 
 function tile_html(string $l, bool $small = false): string {
     $cls = 'tile' . ($small ? ' sm' : '') . ($l === '?' ? ' blank' : '');
-    $ch  = $l === '?' ? '□' : htmlspecialchars($l);
+    $ch  = $l === '?' ? '' : htmlspecialchars($l);
     return "<div class=\"$cls\">$ch</div>";
 }
 
@@ -278,7 +278,7 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
   <div class="section">
     <div class="lbl">My tiles</div>
     <div class="tiles">
-      <?php foreach ($myRack as $l) echo tile_html($l) ?>
+      <?php foreach ($myRack as $l) echo tile_html($l, true) ?>
     </div>
   </div>
   <?php endif ?>
