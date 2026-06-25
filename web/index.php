@@ -1,13 +1,13 @@
 <?php
 // ============================================================
-//  Wordfeud game viewer  —  upload to ~/wordfeud/index.php
+//  Wordfeud game viewer — no PHP sessions (localStorage-based)
 // ============================================================
-ini_set('session.cookie_samesite', 'Lax');
-ini_set('session.cookie_secure',   '0');
-session_start();
-
 define('WF_HOST',  'api.wordfeud.com');
 define('WF_AGENT', 'WebFeudClient/3.0.0 (Android 7)');
+
+// WF session ID from browser localStorage (sent as POST field — no PHP session cookie needed)
+$WF_SID  = isset($_POST['wf_sid'])       ? trim($_POST['wf_sid'])       : '';
+$wf_user = !empty($_POST['wf_user_json']) ? (json_decode($_POST['wf_user_json'], true) ?: null) : null;
 
 // Swedish tile set (104 tiles, ruleset 4)
 $TILESET = [
@@ -20,14 +20,15 @@ $LETTER_ORDER = ['?','A','B','C','D','E','F','G','H','I','J','K','L','M',
 
 // ── API helpers ──────────────────────────────────────────────
 function wf_request(string $method, string $path, ?array $data = null): ?array {
+    global $WF_SID;
     $ch = curl_init('https://' . WF_HOST . $path);
     $hdrs = [
         'Content-Type: application/json',
         'Accept: application/json',
         'User-Agent: ' . WF_AGENT,
     ];
-    if (!empty($_SESSION['wf_sid'])) {
-        $hdrs[] = 'Cookie: sessionid=' . $_SESSION['wf_sid'];
+    if (!empty($WF_SID)) {
+        $hdrs[] = 'Cookie: sessionid=' . $WF_SID;
     }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -47,7 +48,7 @@ function wf_request(string $method, string $path, ?array $data = null): ?array {
     $header = substr($raw, 0, $hsz);
     $body   = substr($raw, $hsz);
     if (preg_match('/Set-Cookie:\s*sessionid=([^;\s]+)/i', $header, $m)) {
-        $_SESSION['wf_sid'] = $m[1];
+        $WF_SID = $m[1];
     }
     return json_decode($body, true);
 }
@@ -100,7 +101,6 @@ function tile_html(string $l, bool $small = false): string {
 
 // ── Routing ──────────────────────────────────────────────────
 if (isset($_GET['logout'])) {
-    session_destroy();
     header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
     exit;
 }
@@ -118,9 +118,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
         if ($res === null) {
             $error = 'Could not reach api.wordfeud.com — cURL failed. Check: apt install php8.3-curl';
         } elseif (($res['status'] ?? '') === 'success') {
-            $_SESSION['wf_user'] = $res['content'];
-            // Use JS redirect to avoid header/session race condition
-            echo '<script>location.replace("' . htmlspecialchars(strtok($_SERVER['REQUEST_URI'], '?')) . '")</script>';
+            $url     = strtok($_SERVER['REQUEST_URI'], '?');
+            $sid_js  = json_encode($WF_SID);
+            $user_js = json_encode(json_encode($res['content'] ?? []));
+            echo "<script>localStorage.setItem('wf_sid',$sid_js);localStorage.setItem('wf_user',$user_js);location.replace(" . json_encode($url) . ");</script>";
             exit;
         } else {
             $error = 'Login failed: ' . htmlspecialchars(json_encode($res));
@@ -128,13 +129,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
     }
 }
 
-$loggedIn = !empty($_SESSION['wf_sid']) && !empty($_SESSION['wf_user']);
-$games    = [];
+$loggedIn   = !empty($WF_SID) && !empty($wf_user);
+$authFailed = false;
+$games      = [];
 if ($loggedIn) {
-    $gr     = wf_get('/wf/user/games/');
-    $games  = ($gr['status'] ?? '') === 'success' ? ($gr['content']['games'] ?? []) : [];
+    $gr = wf_get('/wf/user/games/');
+    if (($gr['status'] ?? '') === 'success') {
+        $games = $gr['content']['games'] ?? [];
+    } else {
+        $authFailed = true;
+        $loggedIn   = false;
+    }
 }
-$myId = (int)($_SESSION['wf_user']['id'] ?? 0);
+$myId = (int)($wf_user['id'] ?? 0);
 
 // Sort: your turn → waiting → finished
 function game_order(array $g, int $id): int {
@@ -231,9 +238,9 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 <header>
   <h1>Wordfeud</h1>
   <div class="hdr-right">
-    <span class="user"><?= htmlspecialchars($_SESSION['wf_user']['username'] ?? '') ?></span>
-    <button class="btn" onclick="location.reload()">↻</button>
-    <a class="btn" href="?logout=1">Logout</a>
+    <span class="user"><?= htmlspecialchars($wf_user['username'] ?? '') ?></span>
+    <button class="btn" onclick="location.href=location.pathname">↻</button>
+    <a class="btn" href="#" onclick="localStorage.removeItem('wf_sid');localStorage.removeItem('wf_user');location.href=location.pathname;return false;">Logout</a>
   </div>
 </header>
 
@@ -287,7 +294,22 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 <?php endforeach ?>
 </div>
 
-<script>setTimeout(()=>location.reload(), 3*60*1000)</script>
+<script>setTimeout(function(){location.href=location.pathname},3*60*1000)</script>
+<?php endif ?>
+
+<form id="autoform" method="post" style="display:none">
+  <input type="hidden" name="wf_sid" id="f_sid">
+  <input type="hidden" name="wf_user_json" id="f_user">
+</form>
+<?php if ($authFailed): ?>
+<script>localStorage.removeItem('wf_sid');localStorage.removeItem('wf_user');</script>
+<?php elseif (!$loggedIn): ?>
+<script>
+(function(){
+  var s=localStorage.getItem('wf_sid');
+  if(s){document.getElementById('f_sid').value=s;document.getElementById('f_user').value=localStorage.getItem('wf_user')||'';document.getElementById('autoform').submit();}
+})();
+</script>
 <?php endif ?>
 </body>
 </html>
