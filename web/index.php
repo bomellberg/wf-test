@@ -204,10 +204,10 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 .tiles{display:flex;flex-wrap:wrap;gap:4px;min-height:20px}
 
 .tile{width:44px;height:44px;background:#fff;color:#1e1e2e;font-weight:800;
-      font-size:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:28px;border-radius:5px;display:flex;align-items:center;justify-content:center;
       box-shadow:0 2px 0 #aaa,0 3px 5px #0003;position:relative}
 .tile.blank{background:#fff;color:#1e1e2e;box-shadow:0 2px 0 #aaa,0 3px 5px #0003}
-.tile.sm{width:34px;height:34px;font-size:16px;font-weight:700;border-radius:4px;
+.tile.sm{width:34px;height:34px;font-size:20px;font-weight:700;border-radius:4px;
          box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
 .tile.sm.blank{box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
 .tile .val{position:absolute;top:1px;right:3px;font-size:10px;font-weight:800;line-height:1;color:#555}
