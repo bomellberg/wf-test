@@ -2,6 +2,8 @@
 // ============================================================
 //  Wordfeud game viewer  —  upload to ~/wordfeud/index.php
 // ============================================================
+ini_set('session.cookie_samesite', 'Lax');
+ini_set('session.cookie_secure',   '0');
 session_start();
 
 define('WF_HOST',  'api.wordfeud.com');
@@ -117,7 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'])) {
             $error = 'Could not reach api.wordfeud.com — cURL failed. Check: apt install php8.3-curl';
         } elseif (($res['status'] ?? '') === 'success') {
             $_SESSION['wf_user'] = $res['content'];
-            header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+            // Use JS redirect to avoid header/session race condition
+            echo '<script>location.replace("' . htmlspecialchars(strtok($_SERVER['REQUEST_URI'], '?')) . '")</script>';
             exit;
         } else {
             $error = 'Login failed: ' . htmlspecialchars(json_encode($res));
