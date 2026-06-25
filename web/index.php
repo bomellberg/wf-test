@@ -210,7 +210,7 @@ header h1{font-size:20px;color:#89b4fa;letter-spacing:1px}
 .tile.sm{width:34px;height:34px;font-size:16px;font-weight:700;border-radius:4px;
          box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
 .tile.sm.blank{box-shadow:0 1px 0 #aaa,0 2px 4px #0002}
-.tile .val{position:absolute;bottom:2px;right:3px;font-size:8px;font-weight:600;line-height:1;color:#777}
+.tile .val{position:absolute;top:1px;right:3px;font-size:10px;font-weight:800;line-height:1;color:#555}
 
 .bag-info{font-size:11px;color:#45475a;margin-top:8px}
 
